@@ -62,6 +62,8 @@
     const resultadosParaJson = [];
 
     todosLosMensajes.forEach((mensajeNode, i) => {
+        console.log("mensajeNode", mensajeNode);
+        
         let remitente = "Remitente Desconocido";
         let fechaHora = "Fecha Desconocida";
         let texto = "";
