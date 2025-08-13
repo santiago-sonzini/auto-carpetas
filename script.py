@@ -5,11 +5,33 @@ import re
 from datetime import datetime
 from PIL import Image
 from tkinter import Tk, filedialog
+import pprint # Usamos pprint para una impresión más legible
 
 # --- Constantes ---
 JSON_FILE_NAME = 'datos.json'
 MIN_WIDTH = 100
 MIN_HEIGHT = 100
+
+def get_datetime_key(item):
+    """
+    Convierte el string 'fechaHora' en un objeto datetime para poder ordenar.
+    Maneja dos formatos: 'HH:MM, DD/MM/YYYY' y 'HH:MM'.
+    """
+    fecha_hora_str = item.get('fechaHora', '')
+
+    try:
+        # Intenta analizar el formato completo: "15:06, 12/8/2025"
+        return datetime.strptime(fecha_hora_str, '%H:%M, %d/%m/%Y')
+    except ValueError:
+        try:
+            # Si falla, intenta analizar solo la hora: "15:10"
+            time_obj = datetime.strptime(fecha_hora_str, '%H:%M').time()
+            # Combina la hora con la fecha de hoy para poder comparar
+            return datetime.combine(datetime.today().date(), time_obj)
+        except ValueError:
+            # Si ambos fallan (campo vacío o formato inválido),
+            # devuelve una fecha muy antigua para que aparezca al principio.
+            return datetime.min
 
 def select_folder():
     """Abre un diálogo para que el usuario seleccione una carpeta."""
@@ -44,7 +66,10 @@ def organizar_por_set(base_directory):
     # --- Eliminación de duplicados de mensajes ---
     unique_data = []
     seen_entries = set()
-    for item in data:
+    data_ordenada = sorted(data, key=get_datetime_key)
+    pprint.pprint(data_ordenada)
+
+    for item in data_ordenada:
         entry_id = (item.get('remitente'), item.get('fechaHora'))
         if entry_id not in seen_entries:
             seen_entries.add(entry_id)

@@ -1,12 +1,11 @@
 (() => {
     // --- Selectores adaptados para la estructura de WhatsApp Web (agosto de 2025) ---
-    // ¡Estos son los selectores clave que hemos actualizado!
     const SELECTOR_GRUPO_MENSAJES = 'div[role="group"]';
-    const SELECTOR_REMITENTE_GRUPO = '._amla span[dir="auto"]'; // Remitente para un grupo de mensajes
-    const SELECTOR_METADATA_INDIVIDUAL = '[data-pre-plain-text]'; // Remitente para un mensaje de texto normal
+    const SELECTOR_REMITENTE_GRUPO = '._amla span[dir="auto"]';
+    const SELECTOR_METADATA_INDIVIDUAL = '[data-pre-plain-text]';
     const SELECTOR_TEXTO_MENSAJE = 'span.selectable-text.copyable-text';
-    const SELECTOR_IMAGEN = 'img[src^="blob:"]'; // El más fiable: busca la URL que empieza con "blob:"
-    const SELECTOR_HORA = 'span.x1rg5ohu'; // Selector para la hora del mensaje
+    const SELECTOR_IMAGEN = 'img[src^="blob:"]';
+    const SELECTOR_HORA = 'span.x1rg5ohu';
 
     // --- Funciones de descarga (sin cambios) ---
     function descargarContenido(contenido, nombreArchivo) {
@@ -46,48 +45,38 @@
         }
     }
 
-    // --- Lógica Principal Mejorada ---
+    // --- Lógica Principal Corregida ---
     const main = document.querySelector('#main');
     if (!main) {
         console.error("❌ No encontré el contenedor principal de mensajes (#main).");
         return;
     }
 
-    // Buscamos tanto grupos de mensajes como mensajes individuales
     const todosLosMensajes = main.querySelectorAll(`${SELECTOR_GRUPO_MENSAJES}, div.x9f619`);
     console.log(`🔎 Encontrados ${todosLosMensajes.length} elementos de mensaje (grupos o individuales).`);
 
-    let contadorImagenesDescargadas = 0;
+    // Contadores para el recuento final
+    let contadorImagenes = 0;
+    let contadorTextos = 0;
+    let idMensaje = 0; // Para un ID único en el JSON
     const resultadosParaJson = [];
 
-    todosLosMensajes.forEach((mensajeNode, i) => {
-        console.log("mensajeNode", mensajeNode);
-
+    todosLosMensajes.forEach((mensajeNode) => {
         let remitente = "Remitente Desconocido";
         let fechaHora = "Fecha Desconocida";
-        let texto = "";
-        const imagenes = [];
 
-        // Intentamos obtener la hora primero, ya que suele estar presente
+        // Obtener datos comunes (remitente y hora) del nodo de mensaje
         const horaElement = mensajeNode.querySelector(SELECTOR_HORA);
         if (horaElement) {
             fechaHora = horaElement.innerText;
         }
 
-        // CASO 1: Es un grupo de mensajes (como el de tus imágenes)
         if (mensajeNode.matches(SELECTOR_GRUPO_MENSAJES)) {
             const remitenteElement = mensajeNode.querySelector(SELECTOR_REMITENTE_GRUPO);
             if (remitenteElement) {
                 remitente = remitenteElement.innerText.trim();
             }
-            // El texto podría ser el "caption" de la imagen, que es un span similar
-            const textoCaption = mensajeNode.querySelector(SELECTOR_TEXTO_MENSAJE);
-            if (textoCaption) {
-                texto = textoCaption.innerText.trim();
-            }
-        }
-        // CASO 2: Es un mensaje de texto individual (lógica anterior)
-        else {
+        } else {
             const metaDataElement = mensajeNode.querySelector(SELECTOR_METADATA_INDIVIDUAL);
             if (metaDataElement) {
                 const prePlainText = metaDataElement.getAttribute('data-pre-plain-text') || "";
@@ -97,66 +86,73 @@
                     remitente = matchPre[2].trim();
                 }
             }
-            const textoSpan = mensajeNode.querySelector(SELECTOR_TEXTO_MENSAJE);
-            if (textoSpan) {
-                texto = textoSpan.innerText.trim();
-            }
         }
 
-        // Buscamos todas las imágenes dentro del nodo actual (sea grupo o individual)
+        // ==================================================================
+        // NUEVA LÓGICA: Separar texto e imágenes en entradas diferentes
+        // ==================================================================
+
+        // 1. PROCESAR EL TEXTO DEL MENSAJE (si existe)
+        const textoElemento = mensajeNode.querySelector(SELECTOR_TEXTO_MENSAJE);
+        if (textoElemento && textoElemento.innerText.trim() !== "") {
+            resultadosParaJson.push({
+                id: idMensaje++,
+                tipo: 'texto',
+                remitente,
+                fechaHora,
+                texto: textoElemento.innerText.trim(),
+                imagenes: []
+            });
+            contadorTextos++; // Incrementar contador de textos
+        }
+
+        // 2. PROCESAR LAS IMÁGENES DEL MENSAJE (si existen)
         const imgs = mensajeNode.querySelectorAll(SELECTOR_IMAGEN);
-        [...new Set(Array.from(imgs).map(img => img.src))].forEach((url) => {
+        const urlsUnicas = [...new Set(Array.from(imgs).map(img => img.src))];
+
+        urlsUnicas.forEach((url) => {
             if (url && url.startsWith('blob:')) {
                 const remitenteSanitizado = remitente.replace(/[^a-zA-Z0-9\s.-]/g, '').trim() || 'desconocido';
                 const fechaSanitizada = fechaHora.replace(/[/,:]/g, '-').replace(/\s/g, '_');
-                const nombreArchivo = `${fechaSanitizada}_${remitenteSanitizado}_img${contadorImagenesDescargadas}.jpg`;
+                const nombreArchivo = `${fechaSanitizada}_${remitenteSanitizado}_img${contadorImagenes}.jpg`;
 
-                imagenes.push({ url_original: url, nombre_archivo_descargado: nombreArchivo });
+                // Crear una entrada separada para CADA imagen
+                resultadosParaJson.push({
+                    id: idMensaje++,
+                    tipo: 'imagen',
+                    remitente,
+                    fechaHora,
+                    texto: '', // El texto está en su propia entrada
+                    imagenes: [{
+                        url_original: url,
+                        nombre_archivo_descargado: nombreArchivo
+                    }]
+                });
 
-                setTimeout(() => descargarImagen(url, nombreArchivo), contadorImagenesDescargadas * 500);
-                contadorImagenesDescargadas++;
+                // Descargar la imagen
+                setTimeout(() => descargarImagen(url, nombreArchivo), contadorImagenes * 300); // Espaciado para evitar bloqueos
+                contadorImagenes++; // Incrementar contador de imágenes
             }
         });
-
-
-
-
-
-        const yaExiste = resultadosParaJson.some(existente => {
-            // 1. Comprueba si el texto es idéntico (y no está vacío)
-            const textoIgual = texto.trim() !== "" && existente.texto === texto;
-
-            // 2. Comprueba si alguna de las URLs de las nuevas imágenes ya existe
-            //    en las imágenes de una entrada guardada.
-            const imagenRepetida = imagenes.length > 0 && existente.imagenes.some(imgExistente =>
-                imagenes.some(nuevaImg => nuevaImg.url_original === imgExistente.url_original)
-            );
-
-            return textoIgual || imagenRepetida;
-        });
-
-        console.log("text", texto);
-        console.log("imagenes", imagenes);
-        console.log("existente", yaExiste);
-
-
-        // Solo añadimos al JSON si hay contenido real Y si no existe previamente
-        if ((texto.trim() !== "" || imagenes.length > 0) && !yaExiste) {
-            resultadosParaJson.push({
-                i,
-                remitente,
-                fechaHora,
-                texto,
-                imagenes
-            });
-        }
     });
 
     // --- Generación del reporte final y JSON ---
     if (resultadosParaJson.length > 0) {
         const contenidoJson = JSON.stringify(resultadosParaJson, null, 2);
-        descargarContenido(contenidoJson, 'datos.json');
-        alert(`Proceso completado.\n\nSe inició la descarga de ${contadorImagenesDescargadas} imágenes y 1 archivo JSON.\n\n¡Recuerda permitir las descargas múltiples!`);
+        descargarContenido(contenidoJson, 'chat_exportado.json');
+
+        console.log("--- PROCESO FINALIZADO ---");
+        console.log(`Total de mensajes de texto extraídos: ${contadorTextos}`);
+        console.log(`Total de imágenes encontradas: ${contadorImagenes}`);
+
+        alert(
+            `Proceso completado.\n\n` +
+            `RECuento:\n` +
+            `- ${contadorTextos} mensajes de texto.\n` +
+            `- ${contadorImagenes} imágenes.\n\n` +
+            `Se inició la descarga de las imágenes y de 1 archivo JSON ("chat_exportado.json") con todos los datos.\n\n` +
+            `¡Recuerda permitir las descargas múltiples en tu navegador!`
+        );
     } else {
         alert("🤷‍♂️ No se encontraron mensajes con texto o imágenes para procesar. Desplázate en el chat para cargar más mensajes y vuelve a intentarlo.");
     }
