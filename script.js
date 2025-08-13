@@ -41,7 +41,6 @@
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(objectUrl);
-            console.log(`✅ Descarga exitosa: ${nombreArchivo}`);
         } catch (error) {
             console.error(`❌ Falló la descarga de "${nombreArchivo}". Razón: ${error.message}. URL: ${url}`);
         }
@@ -57,13 +56,13 @@
     // Buscamos tanto grupos de mensajes como mensajes individuales
     const todosLosMensajes = main.querySelectorAll(`${SELECTOR_GRUPO_MENSAJES}, div.x9f619`);
     console.log(`🔎 Encontrados ${todosLosMensajes.length} elementos de mensaje (grupos o individuales).`);
-    
+
     let contadorImagenesDescargadas = 0;
     const resultadosParaJson = [];
 
     todosLosMensajes.forEach((mensajeNode, i) => {
         console.log("mensajeNode", mensajeNode);
-        
+
         let remitente = "Remitente Desconocido";
         let fechaHora = "Fecha Desconocida";
         let texto = "";
@@ -86,7 +85,7 @@
             if (textoCaption) {
                 texto = textoCaption.innerText.trim();
             }
-        } 
+        }
         // CASO 2: Es un mensaje de texto individual (lógica anterior)
         else {
             const metaDataElement = mensajeNode.querySelector(SELECTOR_METADATA_INDIVIDUAL);
@@ -99,7 +98,7 @@
                 }
             }
             const textoSpan = mensajeNode.querySelector(SELECTOR_TEXTO_MENSAJE);
-            if(textoSpan) {
+            if (textoSpan) {
                 texto = textoSpan.innerText.trim();
             }
         }
@@ -107,21 +106,42 @@
         // Buscamos todas las imágenes dentro del nodo actual (sea grupo o individual)
         const imgs = mensajeNode.querySelectorAll(SELECTOR_IMAGEN);
         [...new Set(Array.from(imgs).map(img => img.src))].forEach((url) => {
-             if (url && url.startsWith('blob:')) {
+            if (url && url.startsWith('blob:')) {
                 const remitenteSanitizado = remitente.replace(/[^a-zA-Z0-9\s.-]/g, '').trim() || 'desconocido';
                 const fechaSanitizada = fechaHora.replace(/[/,:]/g, '-').replace(/\s/g, '_');
                 const nombreArchivo = `${fechaSanitizada}_${remitenteSanitizado}_img${contadorImagenesDescargadas}.jpg`;
-                
+
                 imagenes.push({ url_original: url, nombre_archivo_descargado: nombreArchivo });
-                
+
                 setTimeout(() => descargarImagen(url, nombreArchivo), contadorImagenesDescargadas * 500);
                 contadorImagenesDescargadas++;
             }
         });
         
-        // Solo añadimos al JSON si hay contenido real
-        if (texto.trim() !== "" || imagenes.length > 0) {
+
+    
+
+
+        // Condición para saber si ya existe una entrada con el mismo texto o imagen
+        const yaExiste = resultadosParaJson.some(existente => {
+            // Comprueba si el texto es idéntico (y no está vacío)
+            const textoIgual = texto.trim() !== "" && existente.texto === texto;
+
+            // Comprueba si alguna de las nuevas imágenes ya está en las existentes
+            const imagenRepetida = imagenes.length > 0 && existente.imagenes.some(imgExistente => imagenes.includes(imgExistente));
+
+            return textoIgual || imagenRepetida;
+        });
+
+        console.log("text", texto);
+        console.log("imagenes", imagenes);
+        console.log("existente", yaExiste);
+        
+
+        // Solo añadimos al JSON si hay contenido real Y si no existe previamente
+        if ((texto.trim() !== "" || imagenes.length > 0) && !yaExiste) {
             resultadosParaJson.push({
+                i,
                 remitente,
                 fechaHora,
                 texto,
@@ -138,4 +158,5 @@
     } else {
         alert("🤷‍♂️ No se encontraron mensajes con texto o imágenes para procesar. Desplázate en el chat para cargar más mensajes y vuelve a intentarlo.");
     }
+
 })();
